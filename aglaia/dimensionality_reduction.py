@@ -15,9 +15,10 @@ class VAE(object):
 
     tfd = tf.contrib.distributions
 
-    def __init__(self, dimensions = 2, layer_sizes = [200,200]):
+    def __init__(self, dimensions = 2, layer_sizes = [200,200], learning_rate = 0.001):
         self.dimensions = dimensions
         self.layer_sizes = layer_sizes
+        self.learning_rate = learning_rate
 
     def _make_encoder(self, data):
         """
@@ -34,6 +35,11 @@ class VAE(object):
 
 
     def _make_prior(self):
+        """
+        This could in principle be changed to a different distribution
+        if we want a more uniform distribution or something
+        distributed as a square instead of a circle (in 2D)
+        """
         loc = tf.zeros(self.dimensions)
         scale = tf.ones(self.dimensions)
         return tfd.MultivariateNormalDiag(loc, scale)
@@ -56,6 +62,8 @@ class VAE(object):
 
         x = tf.layers.dense(x, self.n_features, tf.nn.relu)
         x = tf.reshape(x, [-1, self.n_features])
+        # TODO 
+        # pretty sure deterministic will only work for 0 values
         return tfd.Independent(tfd.Deterministic(x), 1)
 
     def fit(self, filenames):
@@ -78,12 +86,15 @@ class VAE(object):
         code = posterior.sample()
 
         # Define the loss.
+        # likelihood ~ E[log(P(X|z))]
         likelihood = make_decoder(code).log_prob(data)
+        # divergence ~ D_KL[Q(z|X) || P(z)] 
         divergence = tfd.kl_divergence(posterior, prior)
+        # elbo ~ lower bound of log(P(X))
         elbo = tf.reduce_mean(likelihood - divergence)
-        optimize = tf.train.AdamOptimizer(0.001).minimize(-elbo)
+        optimize = tf.train.AdamOptimizer(self.learning_rate).minimize(-elbo)
 
-        samples = make_decoder(prior.sample(10), [28, 28]).mean()
+        #samples = make_decoder(prior.sample(10), [28, 28]).mean()
 
         mnist = input_data.read_data_sets('MNIST_data/')
         fig, ax = plt.subplots(nrows=20, ncols=11, figsize=(10, 20))
