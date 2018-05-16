@@ -1,4 +1,8 @@
 
+# https://wiseodd.github.io/techblog/2016/12/10/variational-autoencoder/
+# https://github.com/wiseodd/generative-models/blob/master/VAE/vanilla_vae/vae_tensorflow.py
+# https://danijar.com/building-variational-auto-encoders-in-tensorflow/
+
 import numpy as np
 #import matplotlib.pyplot as plt
 import tensorflow as tf
