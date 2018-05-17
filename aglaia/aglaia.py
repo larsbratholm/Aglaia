@@ -13,7 +13,7 @@ import tensorflow as tf
 from sklearn.utils.validation import check_X_y, check_array
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 #import inverse_dist as inv
 #from tensorflow.python.framework import ops
