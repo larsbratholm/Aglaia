@@ -9,6 +9,12 @@ import tensorflow as tf
 tfd = tf.contrib.distributions
 from .utils import InputError, is_positive_integer, ceil
 from qml import Compound
+from sklearn.manifold import *
+from sklearn.decomposition import *
+from sklearn.linear_model import *
+from sklearn.model_selection import *
+from sklearn.discriminant_analysis import *
+from sklearn.calibration import CalibratedClassifierCV
 
 class VAE(object):
     """
@@ -116,22 +122,29 @@ class VAE(object):
 
 
     def _get_slatm(self):
-        #mbtypes = self._get_slatm_mbtypes([mol.nuclear_charges for mol in self.compounds])
+        mbtypes = self._get_slatm_mbtypes([mol.nuclear_charges for mol in self.compounds])
         x = np.empty(len(self.compounds), dtype=object)
+        coords = []
         for i, mol in enumerate(self.compounds):
             #mol.generate_slatm(mbtypes, local = False)
             mol.generate_coulomb_matrix(size = 20, sorting = "unsorted")
             x[i] = mol.representation
+            coords.append(mol.coordinates)
         x = np.asarray(list(x), dtype=float)
+        coords = np.asarray(coords)
 
-        return x
+        return x, coords
 
     def _get_slatm_mbtypes(self, arr):
         from qml.representations import get_slatm_mbtypes
         return get_slatm_mbtypes(arr)
 
     def fit(self):
-        x = self._get_slatm()
+        x, coords = self._get_slatm()
+
+        d1 = np.sum((coords[:,0] - coords[:,3])**2, axis = 1)
+        d2 = np.sum((coords[:,4] - coords[:,3])**2, axis = 1)
+        print(d1.shape)
 
 
         n = len(self.compounds)
@@ -143,40 +156,58 @@ class VAE(object):
         x_test = x[idx]
         x_train = x[~np.isin(range_,idx)]
 
-        from sklearn.manifold import TSNE
-        from sklearn.decomposition import TruncatedSVD, PCA
-
-        best_var = None
-        best_kl = np.inf
-        best_mod = None
-        mod = TruncatedSVD(32)
-        y = mod.fit_transform(x)
-        #y = x
-        for ee in [10.0, 20.0, 50.0]:
-            for lr in [20.0, 50.0, 200.0]:
-                mod = TSNE(metric = "manhattan", init = 'pca', verbose=1, n_iter = 500,
-                        n_components = 2, early_exaggeration = ee, learning_rate = lr,
-                        perplexity = 50)
-                mod.fit(y)
-
-                score = mod.kl_divergence_
-                if score < best_kl:
-                    best_kl = score
-                    best_var = ee, lr
-                    best_mod = mod
-                print(ee, lr, score)
-
-        print(best_var, best_kl)
-
-        z = best_mod.fit_transform(y)
+        x0 = x[:1000]
+        x1 = x[-1000:]
+        xc = np.concatenate([x0,x1], axis=0)
+        y = np.zeros(2000, dtype=int)
+        y[-1000:] = 1
 
         import matplotlib.pyplot as plt
-        #plt.plot(range(y.shape[0]), z[:,1], ".")
+
+
+
+        """
+        Run a classifier and use probabilities.
+        Alternatively run regressor and modify hyperparams
+        to make the transition from one state as sharp as needed.
+        """
+        #mod = LogisticRegression()
+        #dist = {"C": 10**np.linspace(-1, 2, 1000),
+        #        "penalty": ["l1", "l2"]}
+        #cv_gen = RandomizedSearchCV(mod, dist, cv = 5, verbose = 1, n_iter = 20, refit=False)
+        #cv_gen.fit(xc,y)
+        #print(cv_gen.best_params_, cv_gen.best_score_)
+        #mod.set_params(**cv_gen.best_params_)
+        ##mod = CalibratedClassifierCV(mod, cv=3, method = "sigmoid")
+        #mod.fit(xc,y)
+        #pred = mod.predict_proba(x[1000:-1000])
+
+        #plt.scatter(range(n-2000), pred[:,0])
         #plt.show()
-        plt.scatter(z[:,0], z[:,1], c = range(z.shape[0]), cmap = "gray")
+
+        """
+        Do dimensionality reduction
+        """
+
+        #mod = MDS(2)
+        #y = mod.fit_transform(x)
+
+        #plt.scatter(y[:1000,0], y[:1000,1], alpha = 0.5)
+        #plt.scatter(y[-1000:,0], y[-1000:,1], alpha = 0.5)
+        #plt.scatter(y[1000:-1000,0], y[1000:-1000,1], alpha = 0.5)
+        #plt.show()
+
+        #for i in range(y.shape[1]):
+        #    plt.scatter(range(n), y[:,i])
+        #    plt.show()
+
+        plt.scatter(d1[:1000], d2[:1000], alpha = 0.5)
+        plt.scatter(d1[-1000:], d2[-1000:], alpha = 0.5)
+        plt.scatter(d1[1000:-1000], d2[1000:-1000], alpha = 0.5)
         plt.show()
 
         quit()
+
 
         return self._fit(x_train, x_test)
 
