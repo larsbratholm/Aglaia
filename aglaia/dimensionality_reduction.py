@@ -163,6 +163,7 @@ class VAE(object):
         y[-1000:] = 1
 
         import matplotlib.pyplot as plt
+        from scipy import interpolate
 
 
 
@@ -188,9 +189,25 @@ class VAE(object):
         """
         Do dimensionality reduction
         """
+        D2 = d2[1040:1090]
+        D1 = d1[1040:1090]
+        D =  x[1040:1090]
+        Dlarge =  x[840:1290]
 
-        #mod = MDS(2)
-        #y = mod.fit_transform(x)
+        #PCA/FastICA/LocallyLinearEmbedding(hessian/modified/ltsa)/MDS
+        mod = LocallyLinearEmbedding(n_neighbors = 5, n_components = 2, method = "ltsa")
+        #mod = FastICA(n_components = 2)
+        y = mod.fit_transform(Dlarge)
+        tck,u=interpolate.splprep([y[:,0],y[:,1]],s=0.0)
+        x_i,y_i= interpolate.splev(np.linspace(0,1,1000),tck)
+        plt.plot(x_i,y_i, "k-")
+        plt.plot(x_i[200:-200],y_i[200:-200], "r-")
+        y = mod.fit_transform(D)
+        tck,u=interpolate.splprep([y[:,0],y[:,1]],s=0.0)
+        x_i,y_i= interpolate.splev(np.linspace(0,1,1000),tck)
+        plt.plot(x_i,y_i, "b-")
+        plt.show()
+        quit()
 
         #plt.scatter(y[:1000,0], y[:1000,1], alpha = 0.5)
         #plt.scatter(y[-1000:,0], y[-1000:,1], alpha = 0.5)
@@ -201,9 +218,13 @@ class VAE(object):
         #    plt.scatter(range(n), y[:,i])
         #    plt.show()
 
-        plt.scatter(d1[:1000], d2[:1000], alpha = 0.5)
-        plt.scatter(d1[-1000:], d2[-1000:], alpha = 0.5)
-        plt.scatter(d1[1000:-1000], d2[1000:-1000], alpha = 0.5)
+        tck,u=interpolate.splprep([D2,D1],s=0.0)
+        x_i,y_i= interpolate.splev(np.linspace(0,1,1000),tck)
+
+        #plt.scatter(D2, D1, alpha = 0.5)
+        plt.plot(x_i,y_i, "k-")
+        #plt.scatter(d2[-1000:], d1[-1000:], alpha = 0.5)
+        #plt.scatter(d2[1000:-1000], d1[1000:-1000], alpha = 0.5)
         plt.show()
 
         quit()
