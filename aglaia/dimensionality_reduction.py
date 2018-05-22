@@ -15,6 +15,34 @@ from sklearn.linear_model import *
 from sklearn.model_selection import *
 from sklearn.discriminant_analysis import *
 from sklearn.calibration import CalibratedClassifierCV
+from matplotlib.collections import LineCollection
+import matplotlib.pyplot as plt
+from scipy import interpolate
+
+
+
+def colorplot(x,y, imgname):
+    # fit spline
+    tck,u=interpolate.splprep([x, y],s=0.0)
+    x_i,y_i= interpolate.splev(np.linspace(0,1,10000),tck)
+
+    # Gradient color change magic
+    z = np.linspace(0.0, 1.0, x_i.shape[0])
+    points = np.array([x_i,y_i]).T.reshape(-1,1,2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    lc = LineCollection(segments, array=z, cmap = 'viridis',
+            norm = plt.Normalize(0.0, 1.0), alpha = 0.8)
+    ax = plt.gca()
+    ax.add_collection(lc)
+
+    # plotting
+    xrange_ = x_i.max() - x_i.min()
+    yrange_ = y_i.max() - y_i.min()
+    ax.set_xlim([x_i.min()-0.1*xrange_, x_i.max()+0.1*xrange_])
+    ax.set_ylim([y_i.min()-0.1*yrange_, y_i.max()+0.1*yrange_])
+    plt.savefig(imgname + ".png", dpi = 600)
+    plt.clf()
+
 
 class VAE(object):
     """
@@ -123,49 +151,57 @@ class VAE(object):
 
     def _get_slatm(self):
         mbtypes = self._get_slatm_mbtypes([mol.nuclear_charges for mol in self.compounds])
-        x = np.empty(len(self.compounds), dtype=object)
+        x1 = np.empty(len(self.compounds), dtype=object)
+        x2 = np.empty(len(self.compounds), dtype=object)
         coords = []
         for i, mol in enumerate(self.compounds):
-            #mol.generate_slatm(mbtypes, local = False)
+            mol.generate_slatm(mbtypes, local = False)
+            x1[i] = mol.representation
             mol.generate_coulomb_matrix(size = 20, sorting = "unsorted")
-            x[i] = mol.representation
+            x2[i] = mol.representation
             coords.append(mol.coordinates)
-        x = np.asarray(list(x), dtype=float)
+        x1 = np.asarray(list(x1), dtype=float)
+        x2 = np.asarray(list(x2), dtype=float)
         coords = np.asarray(coords)
 
-        return x, coords
+        return x1, x2, coords
 
     def _get_slatm_mbtypes(self, arr):
         from qml.representations import get_slatm_mbtypes
         return get_slatm_mbtypes(arr)
 
     def fit(self):
-        x, coords = self._get_slatm()
+        slatm, cm, coords = self._get_slatm()
 
         d1 = np.sum((coords[:,0] - coords[:,3])**2, axis = 1)
         d2 = np.sum((coords[:,4] - coords[:,3])**2, axis = 1)
-        print(d1.shape)
-
 
         n = len(self.compounds)
         idx = np.random.randint(0, n, size = 100)
         range_ = np.arange(n)
 
         # Remove constant features
-        x = x[:, x.std(0) > 1e-6]
-        x_test = x[idx]
-        x_train = x[~np.isin(range_,idx)]
+        slatm = slatm[:, slatm.std(0) > 1e-6]
+        #slatm_test = slatm[idx]
+        #slatm_train = slatm[~np.isin(range_,idx)]
 
-        x0 = x[:1000]
-        x1 = x[-1000:]
-        xc = np.concatenate([x0,x1], axis=0)
+        cm = cm[:, cm.std(0) > 1e-6]
+        #cm_test = cm[idcm]
+        #cm_train = cm[~np.isin(range_,idcm)]
+
+        cm0 = cm[:1000]
+        cm1 = cm[-1000:]
+        cmc = np.concatenate([cm0,cm1], axis=0)
+        slatm0 = slatm[:1000]
+        slatm1 = slatm[-1000:]
+        slatmc = np.concatenate([slatm0,slatm1], axis=0)
         y = np.zeros(2000, dtype=int)
         y[-1000:] = 1
 
-        import matplotlib.pyplot as plt
-        from scipy import interpolate
-
-
+        D2 = d2[1020:1100]
+        D1 = d1[1020:1100]
+        Dcm = cm[1020:1100]
+        Dslatm = slatm[1020:1100]
 
         """
         Run a classifier and use probabilities.
@@ -176,59 +212,53 @@ class VAE(object):
         #dist = {"C": 10**np.linspace(-1, 2, 1000),
         #        "penalty": ["l1", "l2"]}
         #cv_gen = RandomizedSearchCV(mod, dist, cv = 5, verbose = 1, n_iter = 20, refit=False)
-        #cv_gen.fit(xc,y)
+        #cv_gen.fit(cmc,y)
         #print(cv_gen.best_params_, cv_gen.best_score_)
         #mod.set_params(**cv_gen.best_params_)
         ##mod = CalibratedClassifierCV(mod, cv=3, method = "sigmoid")
-        #mod.fit(xc,y)
-        #pred = mod.predict_proba(x[1000:-1000])
+        #mod.fit(cmc,y)
+        #pred = mod.predict_proba(Dcm)
+        #colorplot(range(1020,1100), pred[:,0], "class_cm")
+        #cv_gen.fit(slatmc,y)
+        #print(cv_gen.best_params_, cv_gen.best_score_)
+        #mod.set_params(**cv_gen.best_params_)
+        ##mod = CalibratedClassifierCV(mod, cv=3, method = "sigmoid")
+        #mod.fit(slatmc,y)
+        #pred = mod.predict_proba(Dslatm)
+        #colorplot(range(1020,1100), pred[:,0], "class_slatm")
 
-        #plt.scatter(range(n-2000), pred[:,0])
-        #plt.show()
 
-        """
-        Do dimensionality reduction
-        """
-        D2 = d2[1040:1090]
-        D1 = d1[1040:1090]
-        D =  x[1040:1090]
-        Dlarge =  x[840:1290]
 
-        #PCA/FastICA/LocallyLinearEmbedding(hessian/modified/ltsa)/MDS
+        # Classic
+        colorplot(D2, D1, "classic")
+
+        # Dim red
         mod = LocallyLinearEmbedding(n_neighbors = 5, n_components = 2, method = "ltsa")
-        #mod = FastICA(n_components = 2)
-        y = mod.fit_transform(Dlarge)
-        tck,u=interpolate.splprep([y[:,0],y[:,1]],s=0.0)
-        x_i,y_i= interpolate.splev(np.linspace(0,1,1000),tck)
-        plt.plot(x_i,y_i, "k-")
-        plt.plot(x_i[200:-200],y_i[200:-200], "r-")
-        y = mod.fit_transform(D)
-        tck,u=interpolate.splprep([y[:,0],y[:,1]],s=0.0)
-        x_i,y_i= interpolate.splev(np.linspace(0,1,1000),tck)
-        plt.plot(x_i,y_i, "b-")
-        plt.show()
-        quit()
-
-        #plt.scatter(y[:1000,0], y[:1000,1], alpha = 0.5)
-        #plt.scatter(y[-1000:,0], y[-1000:,1], alpha = 0.5)
-        #plt.scatter(y[1000:-1000,0], y[1000:-1000,1], alpha = 0.5)
-        #plt.show()
-
-        #for i in range(y.shape[1]):
-        #    plt.scatter(range(n), y[:,i])
-        #    plt.show()
-
-        tck,u=interpolate.splprep([D2,D1],s=0.0)
-        x_i,y_i= interpolate.splev(np.linspace(0,1,1000),tck)
-
-        #plt.scatter(D2, D1, alpha = 0.5)
-        plt.plot(x_i,y_i, "k-")
-        #plt.scatter(d2[-1000:], d1[-1000:], alpha = 0.5)
-        #plt.scatter(d2[1000:-1000], d1[1000:-1000], alpha = 0.5)
-        plt.show()
+        y = mod.fit_transform(Dcm)
+        colorplot(y[:,0], y[:,1], "ltsa_cm")
+        mod = LocallyLinearEmbedding(n_neighbors = 7, n_components = 2, method = "ltsa")
+        y = mod.fit_transform(Dslatm)
+        colorplot(y[:,0], y[:,1], "ltsa_slatm")
+        #mod = LocallyLinearEmbedding(n_neighbors = 5, n_components = 2, method = "modified")
+        #y = mod.fit_transform(Dcm)
+        #colorplot(y[:,0], y[:,1], "mod_cm")
+        #mod = LocallyLinearEmbedding(n_neighbors = 7, n_components = 2, method = "modified")
+        #y = mod.fit_transform(Dslatm)
+        #colorplot(y[:,0], y[:,1], "mod_slatm")
+        mod = MDS(n_components = 2, n_init = 10)
+        y = mod.fit_transform(Dcm)
+        colorplot(y[:,0], y[:,1], "mds_cm")
+        mod = MDS(n_components = 2, n_init = 10)
+        y = mod.fit_transform(Dslatm)
+        colorplot(y[:,0], y[:,1], "mds_slatm")
+        mod = PCA(n_components = 2)
+        y = mod.fit_transform(Dcm)
+        colorplot(y[:,0], y[:,1], "pca_cm")
+        mod = PCA(n_components = 2)
+        y = mod.fit_transform(Dslatm)
+        colorplot(y[:,0], y[:,1], "pca_slatm")
 
         quit()
-
 
         return self._fit(x_train, x_test)
 
